@@ -118,6 +118,21 @@ app.post('/api/contacts/sync', (req, res) => {
   res.json({ registeredContacts });
 });
 
+
+// Root Status Endpoint
+app.get('/', (req, res) => {
+  res.send(`
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-align: center; padding: 60px 20px; background: #0c1317; color: #00a884; min-height: 100vh; box-sizing: border-box;">
+      <div style="max-width: 500px; margin: 0 auto; background: #111b21; padding: 30px; border-radius: 24px; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
+        <div style="width: 70px; height: 70px; background: #00a884; border-radius: 20px; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; font-size: 32px;">📱</div>
+        <h1 style="color: #fff; font-size: 22px; margin-bottom: 10px;">WhatsApp Ultra Cloud Server</h1>
+        <p style="color: #00a884; font-weight: bold; font-size: 14px; margin-bottom: 15px;">● STATUS: LIVE & OPERATIONAL 24/7</p>
+        <p style="color: #8696a0; font-size: 12px; line-height: 1.6;">Realtime Socket.io, Phone OTP Authentication, WebRTC Signaling & Database APIs are online and servicing Android & Web clients worldwide.</p>
+      </div>
+    </div>
+  `);
+});
+
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 const storage = multer.diskStorage({
