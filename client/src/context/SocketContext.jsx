@@ -12,12 +12,12 @@ export const SocketProvider = ({ children }) => {
   const [typingUsers, setTypingUsers] = useState({});
   const typingTimerRef = useRef(null);
 
-  // Initialize Socket connection to live backend
+  // Initialize Socket connection
   useEffect(() => {
     const sUrl = SOCKET_URL || (typeof window !== 'undefined' ? window.location.origin : '/');
     const newSocket = io(sUrl, {
       transports: ['websocket', 'polling'],
-      reconnectionAttempts: 20,
+      reconnectionAttempts: 50,
       reconnectionDelay: 1000
     });
 
@@ -85,13 +85,18 @@ export const SocketProvider = ({ children }) => {
     fetchMessages();
   }, [activeChat, currentUser]);
 
-  // Global socket message & interaction listeners
+  // Global socket message listener with instant deduplication
   useEffect(() => {
     if (!socket) return;
 
     socket.on('receive-message', (msg) => {
       setMessages(prev => {
-        if (prev.some(m => m.id === msg.id)) return prev;
+        const idx = prev.findIndex(m => m.id === msg.id);
+        if (idx !== -1) {
+          const updated = [...prev];
+          updated[idx] = { ...updated[idx], ...msg };
+          return updated;
+        }
         return [...prev, msg];
       });
     });
@@ -164,23 +169,45 @@ export const SocketProvider = ({ children }) => {
     };
   }, [socket]);
 
+  // Send message with instant optimistic rendering
   const sendMessage = useCallback((msgData) => {
-    if (!socket || !currentUser || !activeChat) return;
-    
+    if (!currentUser || !activeChat) return;
+
     const isGroup = Boolean(activeChat.isGroup);
     const chatId = isGroup ? activeChat.id : [currentUser.id, activeChat.id].sort().join('-');
 
-    socket.emit('send-message', {
-      ...msgData,
+    const tempMsg = {
+      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       chatId,
       senderId: currentUser.id,
-      receiverId: activeChat.id
-    });
+      receiverId: activeChat.id,
+      text: msgData.text || '',
+      type: msgData.type || 'text',
+      mediaUrl: msgData.mediaUrl || null,
+      fileName: msgData.fileName || null,
+      fileSize: msgData.fileSize || null,
+      audioDuration: msgData.audioDuration || null,
+      pollData: msgData.pollData || null,
+      locationData: msgData.locationData || null,
+      replyTo: msgData.replyTo || null,
+      forwarded: msgData.forwarded || false,
+      reactions: [],
+      timestamp: Date.now(),
+      status: 'sent'
+    };
+
+    // 1. Optimistically append message immediately on UI
+    setMessages(prev => [...prev, tempMsg]);
+
+    // 2. Emit to socket server
+    if (socket) {
+      socket.emit('send-message', tempMsg);
+    }
   }, [socket, currentUser, activeChat]);
 
   const deleteMessage = useCallback((messageId, deleteFor = 'me') => {
-    if (!socket || !currentUser) return;
-    socket.emit('delete-message', { messageId, userId: currentUser.id, deleteFor });
+    if (!currentUser) return;
+    if (socket) socket.emit('delete-message', { messageId, userId: currentUser.id, deleteFor });
     if (deleteFor === 'me') {
       setMessages(prev => prev.map(m =>
         m.id === messageId ? { ...m, deletedForMe: true } : m
@@ -189,17 +216,17 @@ export const SocketProvider = ({ children }) => {
   }, [socket, currentUser]);
 
   const editMessage = useCallback((messageId, newText) => {
-    if (!socket || !currentUser) return;
-    socket.emit('edit-message', { messageId, newText, userId: currentUser.id });
+    if (!currentUser) return;
+    if (socket) socket.emit('edit-message', { messageId, newText, userId: currentUser.id });
     setMessages(prev => prev.map(m =>
       m.id === messageId ? { ...m, text: newText, edited: true, editedAt: Date.now() } : m
     ));
   }, [socket, currentUser]);
 
   const reactToMessage = useCallback((messageId, reaction) => {
-    if (!socket || !currentUser || !activeChat) return;
+    if (!currentUser || !activeChat) return;
     const chatId = activeChat.isGroup ? activeChat.id : [currentUser.id, activeChat.id].sort().join('-');
-    socket.emit('react-message', { messageId, reaction, userId: currentUser.id, chatId });
+    if (socket) socket.emit('react-message', { messageId, reaction, userId: currentUser.id, chatId });
   }, [socket, currentUser, activeChat]);
 
   const sendTyping = useCallback(() => {

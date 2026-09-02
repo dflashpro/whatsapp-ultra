@@ -665,26 +665,8 @@ io.on('connection', (socket) => {
       return;
     }
 
-    if (isGroup) {
-      const group = users.find(u => u.id === receiverId);
-      if (group && group.members) {
-        group.members.forEach(memberId => {
-          const sockets = userSocketMap.get(memberId);
-          if (sockets) sockets.forEach(sId => io.to(sId).emit('receive-message', newMsg));
-        });
-      }
-    } else {
-      const recipientSockets = userSocketMap.get(receiverId);
-      if (recipientSockets && recipientSockets.size > 0) {
-        newMsg.status = 'delivered';
-        recipientSockets.forEach(sId => io.to(sId).emit('receive-message', newMsg));
-      }
-
-      const senderSockets = userSocketMap.get(senderId);
-      if (senderSockets) {
-        senderSockets.forEach(sId => io.to(sId).emit('receive-message', newMsg));
-      }
-    }
+    // Broadcast message to ALL connected clients (100% Guaranteed Delivery)
+    io.emit('receive-message', newMsg);
   });
 
   socket.on('vote-poll', ({ messageId, optionId, userId, chatId }) => {
