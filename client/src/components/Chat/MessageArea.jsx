@@ -51,9 +51,28 @@ export const MessageArea = ({ onReply, replyMessage, setReplyMessage, showSearch
 
   const currentMessages = messages.filter(m => {
     if (m.deletedForMe && m.senderId !== currentUser?.id) return false;
-    if (isGroup) return m.receiverId === chatId || m.chatId === chatId;
+    if (!activeChat || !currentUser) return false;
+    if (isGroup) return m.receiverId === activeChat.id || m.chatId === activeChat.id;
+
+    // Direct ID match
+    if ((m.senderId === currentUser.id && m.receiverId === activeChat.id) ||
+        (m.senderId === activeChat.id && m.receiverId === currentUser.id)) {
+      return true;
+    }
+
     const mChatId = [m.senderId, m.receiverId].sort().join('-');
-    return mChatId === chatId || m.chatId === chatId;
+    if (mChatId === chatId || m.chatId === chatId) return true;
+
+    // Phone fallback match
+    const cPhone = currentUser.phone ? currentUser.phone.replace(/\s+/g, '') : '';
+    const aPhone = activeChat.phone ? activeChat.phone.replace(/\s+/g, '') : '';
+    if (cPhone && aPhone) {
+      if ((m.chatId && m.chatId.includes(cPhone) && m.chatId.includes(aPhone)) ||
+          (m.senderId && m.receiverId && [m.senderId, m.receiverId].some(x => x.includes(cPhone)) && [m.senderId, m.receiverId].some(x => x.includes(aPhone)))) {
+        return true;
+      }
+    }
+    return false;
   });
 
   const scrollToBottom = (b = 'smooth') => bottomRef.current?.scrollIntoView({ behavior: b });
