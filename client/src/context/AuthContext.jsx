@@ -1,3 +1,4 @@
+import { BACKEND_URL } from '../config';
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
 const AuthContext = createContext();
@@ -39,7 +40,7 @@ export const AuthProvider = ({ children }) => {
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch('/api/users');
+      const res = await fetch(`${BACKEND_URL}/api/users`);
       const data = await res.json();
       setUsers(data);
     } catch (e) {}
@@ -155,7 +156,7 @@ export const AuthProvider = ({ children }) => {
 
   const createGroup = async (groupData) => {
     try {
-      const res = await fetch('/api/groups', {
+      const res = await fetch(`${BACKEND_URL}/api/groups`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(groupData)
@@ -169,7 +170,7 @@ export const AuthProvider = ({ children }) => {
 
   const blockUser = async (targetId) => {
     try {
-      await fetch('/api/users/block', {
+      await fetch(`${BACKEND_URL}/api/users/block`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: currentUser.id, targetId, action: 'block' })
       });
@@ -180,7 +181,7 @@ export const AuthProvider = ({ children }) => {
 
   const unblockUser = async (targetId) => {
     try {
-      await fetch('/api/users/block', {
+      await fetch(`${BACKEND_URL}/api/users/block`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: currentUser.id, targetId, action: 'unblock' })
       });
@@ -191,7 +192,7 @@ export const AuthProvider = ({ children }) => {
 
   const updatePrivacy = async (privacyUpdates) => {
     try {
-      await fetch('/api/users/privacy', {
+      await fetch(`${BACKEND_URL}/api/users/privacy`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: currentUser.id, privacy: privacyUpdates })
       });
@@ -200,7 +201,7 @@ export const AuthProvider = ({ children }) => {
 
   const updateProfile = async (updated) => {
     try {
-      const res = await fetch('/api/users/update', {
+      const res = await fetch(`${BACKEND_URL}/api/users/update`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: currentUser.id, ...updated })
       });

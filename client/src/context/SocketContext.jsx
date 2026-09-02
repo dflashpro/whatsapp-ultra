@@ -1,54 +1,97 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from './AuthContext';
+import { SOCKET_URL, BACKEND_URL } from '../config';
 
 const SocketContext = createContext();
 
 export const SocketProvider = ({ children }) => {
-  const { currentUser, activeChat, showToast } = useAuth();
+  const { currentUser, activeChat, showToast, setUsers } = useAuth();
   const [socket, setSocket] = useState(null);
   const [messages, setMessages] = useState([]);
   const [typingUsers, setTypingUsers] = useState({});
   const typingTimerRef = useRef(null);
 
+  // Initialize Socket connection to live backend
   useEffect(() => {
-    const newSocket = io('/', { transports: ['websocket', 'polling'] });
+    const sUrl = SOCKET_URL || (typeof window !== 'undefined' ? window.location.origin : '/');
+    const newSocket = io(sUrl, {
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: 20,
+      reconnectionDelay: 1000
+    });
+
     setSocket(newSocket);
     return () => newSocket.disconnect();
   }, []);
 
+  // Join user room on connect or user change
   useEffect(() => {
     if (!socket || !currentUser) return;
     socket.emit('user-join', currentUser.id);
+
+    const onConnect = () => {
+      socket.emit('user-join', currentUser.id);
+    };
+
+    socket.on('connect', onConnect);
+    return () => socket.off('connect', onConnect);
   }, [socket, currentUser]);
 
+  // Real-time user registration & online status sync
   useEffect(() => {
     if (!socket) return;
 
+    socket.on('user-registered', (newUser) => {
+      setUsers(prev => {
+        const exists = prev.find(u => u.id === newUser.id || (u.phone && newUser.phone && u.phone.replace(/\s+/g, '') === newUser.phone.replace(/\s+/g, '')));
+        if (exists) {
+          return prev.map(u => (u.id === exists.id ? { ...u, ...newUser } : u));
+        }
+        return [newUser, ...prev];
+      });
+    });
+
+    socket.on('user-status-change', ({ userId, online, lastSeen }) => {
+      setUsers(prev => prev.map(u => (u.id === userId ? { ...u, online, lastSeen } : u)));
+    });
+
+    return () => {
+      socket.off('user-registered');
+      socket.off('user-status-change');
+    };
+  }, [socket, setUsers]);
+
+  // Fetch conversation messages on activeChat change
+  useEffect(() => {
+    if (!activeChat || !currentUser) return;
+    const isGroup = Boolean(activeChat.isGroup);
+    const chatId = isGroup ? activeChat.id : [currentUser.id, activeChat.id].sort().join('-');
+
     const fetchMessages = async () => {
-      if (!activeChat) return;
-      const isGroup = activeChat.isGroup;
-      const chatId = isGroup ? activeChat.id : [currentUser?.id, activeChat?.id].sort().join('-');
       try {
-        const res = await fetch(`/api/messages/${chatId}`);
+        const res = await fetch(`${BACKEND_URL}/api/messages/${chatId}`);
         const data = await res.json();
-        setMessages(prev => {
-          const existingIds = new Set(prev.map(m => m.id));
-          const newMsgs = data.filter(m => !existingIds.has(m.id));
-          return [...prev, ...newMsgs];
-        });
+        if (Array.isArray(data)) {
+          setMessages(prev => {
+            const existingIds = new Set(prev.map(m => m.id));
+            const newMsgs = data.filter(m => !existingIds.has(m.id));
+            return [...prev, ...newMsgs];
+          });
+        }
       } catch (e) {}
     };
 
     fetchMessages();
-  }, [activeChat, socket]);
+  }, [activeChat, currentUser]);
 
+  // Global socket message & interaction listeners
   useEffect(() => {
     if (!socket) return;
 
     socket.on('receive-message', (msg) => {
       setMessages(prev => {
-        if (prev.find(m => m.id === msg.id)) return prev;
+        if (prev.some(m => m.id === msg.id)) return prev;
         return [...prev, msg];
       });
     });
@@ -56,9 +99,7 @@ export const SocketProvider = ({ children }) => {
     socket.on('message-deleted', ({ messageId, deletedFor }) => {
       setMessages(prev => prev.map(m => {
         if (m.id === messageId) {
-          if (deletedFor === 'everyone') {
-            return { ...m, text: '', deleted: true, type: 'deleted' };
-          }
+          if (deletedFor === 'everyone') return { ...m, text: '', deleted: true, type: 'deleted' };
           return { ...m, deletedForMe: true };
         }
         return m;
@@ -94,13 +135,14 @@ export const SocketProvider = ({ children }) => {
     });
 
     socket.on('user-typing', ({ senderId, chatId }) => {
-      setTypingUsers(prev => ({ ...prev, [chatId]: senderId }));
+      setTypingUsers(prev => ({ ...prev, [chatId]: senderId, [senderId]: senderId }));
     });
 
     socket.on('user-stop-typing', ({ senderId, chatId }) => {
       setTypingUsers(prev => {
         const next = { ...prev };
-        if (next[chatId] === senderId) delete next[chatId];
+        delete next[chatId];
+        delete next[senderId];
         return next;
       });
     });
@@ -124,8 +166,13 @@ export const SocketProvider = ({ children }) => {
 
   const sendMessage = useCallback((msgData) => {
     if (!socket || !currentUser || !activeChat) return;
+    
+    const isGroup = Boolean(activeChat.isGroup);
+    const chatId = isGroup ? activeChat.id : [currentUser.id, activeChat.id].sort().join('-');
+
     socket.emit('send-message', {
       ...msgData,
+      chatId,
       senderId: currentUser.id,
       receiverId: activeChat.id
     });

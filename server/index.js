@@ -19,10 +19,71 @@ const io = new Server(server, {
   }
 });
 
+
+const cleanPhone = (p) => p ? p.toString().replace(/[\s\-\+\(\)]/g, '') : '';
+
 const PORT = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
+
+app.post('/api/auth/setup-profile', (req, res) => {
+  const { name, phone, avatar, status } = req.body;
+  if (!name || !phone) return res.status(400).json({ error: 'Name and phone are required' });
+
+  const cPhone = cleanPhone(phone);
+  let existingUser = users.find(u => cleanPhone(u.phone) === cPhone);
+  
+  if (existingUser) {
+    existingUser.name = name;
+    existingUser.avatar = avatar || existingUser.avatar;
+    existingUser.status = status || existingUser.status;
+    existingUser.online = true;
+    existingUser.lastSeen = Date.now();
+    io.emit('user-registered', existingUser);
+    io.emit('user-status-change', { userId: existingUser.id, online: true, lastSeen: existingUser.lastSeen });
+    return res.json({ success: true, user: existingUser });
+  }
+
+  const newUser = {
+    id: `user_${cPhone || Date.now()}`,
+    name,
+    phone,
+    avatar: avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+    status: status || 'Hey there! I am using WhatsApp Ultra 🚀',
+    online: true,
+    lastSeen: Date.now()
+  };
+
+  users.unshift(newUser);
+  io.emit('user-registered', newUser);
+  io.emit('user-status-change', { userId: newUser.id, online: true, lastSeen: newUser.lastSeen });
+  res.json({ success: true, user: newUser });
+});
+
+app.post('/api/contacts/add', (req, res) => {
+  const { phone, name } = req.body;
+  if (!phone) return res.status(400).json({ error: 'Phone number is required' });
+
+  const cPhone = cleanPhone(phone);
+  let matched = users.find(u => cleanPhone(u.phone) === cPhone);
+  
+  if (!matched) {
+    matched = {
+      id: `user_${cPhone || Date.now()}`,
+      name: name || phone,
+      phone,
+      avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${cPhone}`,
+      status: 'Hey there! I am using WhatsApp Ultra 🚀',
+      online: false,
+      lastSeen: Date.now()
+    };
+    users.push(matched);
+    io.emit('user-registered', matched);
+  }
+  res.json({ success: true, contact: matched });
+});
+
 
 // --- PHONE NUMBER + OTP AUTHENTICATION & CONTACT DISCOVERY ---
 const otpStore = new Map(); // phone -> { otp, expiresAt }
@@ -60,54 +121,7 @@ app.post('/api/auth/verify-otp', (req, res) => {
   });
 });
 
-app.post('/api/auth/setup-profile', (req, res) => {
-  const { name, phone, avatar, status } = req.body;
-  if (!name || !phone) return res.status(400).json({ error: 'Name and phone are required' });
 
-  let existingUser = users.find(u => u.phone && u.phone.replace(/\s+/g, '') === phone.replace(/\s+/g, ''));
-  if (existingUser) {
-    existingUser.name = name;
-    existingUser.avatar = avatar || existingUser.avatar;
-    existingUser.status = status || existingUser.status;
-    existingUser.online = true;
-    return res.json({ success: true, user: existingUser });
-  }
-
-  const newUser = {
-    id: `user_${Date.now()}`,
-    name,
-    phone,
-    avatar: avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
-    status: status || 'Hey there! I am using WhatsApp Ultra 🚀',
-    online: true,
-    lastSeen: Date.now()
-  };
-
-  users.unshift(newUser);
-  io.emit('user-registered', newUser);
-  res.json({ success: true, user: newUser });
-});
-
-app.post('/api/contacts/add', (req, res) => {
-  const { phone, name } = req.body;
-  if (!phone) return res.status(400).json({ error: 'Phone number is required' });
-
-  let matched = users.find(u => u.phone && u.phone.replace(/\s+/g, '') === phone.replace(/\s+/g, ''));
-  if (!matched) {
-    matched = {
-      id: `user_${Date.now()}`,
-      name: name || phone,
-      phone,
-      avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${phone}`,
-      status: 'Hey there! I am using WhatsApp Ultra 🚀',
-      online: true,
-      lastSeen: Date.now()
-    };
-    users.push(matched);
-    io.emit('user-registered', matched);
-  }
-  res.json({ success: true, contact: matched });
-});
 
 app.post('/api/contacts/sync', (req, res) => {
   const { phoneNumbers } = req.body; // Array of phone strings
