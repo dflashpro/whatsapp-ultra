@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">WhatsApp Ultra Pro</string>
+    <string name="title_activity_main">WhatsApp Ultra Pro</string>
+    <string name="package_name">com.ultra.whatsapp</string>
+    <string name="custom_url_scheme">com.ultra.whatsapp</string>
+</resources>

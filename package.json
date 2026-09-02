@@ -1,0 +1,10 @@
+{
+  "name": "whatsapp-clone-root",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node start.js",
+    "server": "npm start --prefix server",
+    "client": "npm run dev --prefix client"
+  }
+}

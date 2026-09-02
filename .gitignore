@@ -1,0 +1,14 @@
+﻿node_modules
+dist
+.gradle
+build
+*.log
+.DS_Store
+android/app/build
+android/.gradle
+android/build
+client/dist
+client/node_modules
+server/node_modules
+server/uploads/*
+!server/uploads/.gitkeep
