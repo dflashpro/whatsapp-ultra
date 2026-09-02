@@ -23,7 +23,13 @@ export const ChatList = ({ searchQuery, filterTab }) => {
       return messages.filter(m => m.chatId === `self_${currentUser.id}` || (m.senderId === currentUser.id && m.receiverId === currentUser.id));
     }
     const chatId = isGroup ? targetId : [currentUser.id, targetId].sort().join('-');
-    return messages.filter(m => m.chatId === chatId || (!isGroup && ((m.senderId === currentUser.id && m.receiverId === targetId) || (m.senderId === targetId && m.receiverId === currentUser.id))));
+    return messages.filter(m => 
+      m.chatId === chatId || 
+      (!isGroup && (
+        (m.senderId === currentUser.id && m.receiverId === targetId) || 
+        (m.senderId === targetId && m.receiverId === currentUser.id)
+      ))
+    );
   };
 
   const getChatLastMessage = (targetId, isGroup) => {
@@ -48,7 +54,30 @@ export const ChatList = ({ searchQuery, filterTab }) => {
     online: true
   } : null;
 
-  const displayList = selfChatUser ? [selfChatUser, ...users.filter(u => u.id !== currentUser?.id)] : users.filter(u => u.id !== currentUser?.id);
+  // 1. Gather all users from auth context
+  const knownUsers = [...users.filter(u => u.id !== currentUser?.id)];
+
+  // 2. Discover any senders from incoming messages that are not yet in knownUsers
+  messages.forEach(m => {
+    if (!currentUser) return;
+    const otherId = m.senderId === currentUser.id ? m.receiverId : m.senderId;
+    if (otherId && otherId !== currentUser.id && !otherId.startsWith('group_')) {
+      const alreadyKnown = knownUsers.some(u => u.id === otherId || (u.phone && u.phone.replace(/\s+/g, '') === otherId.replace('user_', '')));
+      if (!alreadyKnown) {
+        knownUsers.push({
+          id: otherId,
+          name: m.senderId === currentUser.id ? (m.receiverPhone || otherId) : (m.senderName || otherId.replace('user_', '+')),
+          phone: otherId.replace('user_', '+'),
+          avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${otherId}`,
+          status: 'Hey there! I am using WhatsApp Ultra 🚀',
+          online: true,
+          lastSeen: m.timestamp
+        });
+      }
+    }
+  });
+
+  const displayList = selfChatUser ? [selfChatUser, ...knownUsers] : knownUsers;
 
   const filteredUsers = displayList
     .filter(u => {
@@ -66,7 +95,13 @@ export const ChatList = ({ searchQuery, filterTab }) => {
       const bPinned = pinnedChats.includes(b.id) || b.isAI;
       if (aPinned && !bPinned) return -1;
       if (!aPinned && bPinned) return 1;
-      return 0;
+
+      // Sort by last message timestamp descending (most recent on top)
+      const aMsg = getChatLastMessage(a.id, a.isGroup);
+      const bMsg = getChatLastMessage(b.id, b.isGroup);
+      const aTime = aMsg ? aMsg.timestamp : 0;
+      const bTime = bMsg ? bMsg.timestamp : 0;
+      return bTime - aTime;
     });
 
   const formatTimestamp = (ts) => {
@@ -144,7 +179,7 @@ export const ChatList = ({ searchQuery, filterTab }) => {
                   {isLocked && <Lock size={12} className="text-rose-400 shrink-0" />}
                   {isMuted && <BellOff size={12} className="text-[#8696a0] shrink-0" />}
                 </div>
-                <span className="text-[11px] text-[#8696a0] shrink-0 ml-2">
+                <span className="text-[11px] text-[#8696a0] shrink-0 ml-2 font-medium">
                   {formatTimestamp(lastMsg?.timestamp)}
                 </span>
               </div>
@@ -155,7 +190,7 @@ export const ChatList = ({ searchQuery, filterTab }) => {
                     typing...
                   </span>
                 ) : lastMsg ? (
-                  <div className="flex items-center gap-1 text-xs text-[#8696a0] truncate flex-1">
+                  <div className="flex items-center gap-1 text-xs text-[#8696a0] truncate flex-1 font-medium">
                     {lastMsg.senderId === currentUser?.id && !user.isSelf && (
                       <span>
                         {lastMsg.status === 'read' ? (
@@ -169,11 +204,11 @@ export const ChatList = ({ searchQuery, filterTab }) => {
                     {lastMsg.type === 'audio' && <span>🎤 Voice note</span>}
                     {lastMsg.type === 'location' && <span>📍 Location</span>}
                     {lastMsg.type === 'poll' && <span>📊 Poll</span>}
-                    {lastMsg.type === 'text' && <span className="truncate">{lastMsg.text}</span>}
+                    {lastMsg.type === 'text' && <span className={`truncate ${unreadCount > 0 ? 'text-[#e9edef] font-bold' : ''}`}>{lastMsg.text}</span>}
                   </div>
                 ) : (
                   <span className="text-xs text-[#8696a0] truncate italic">
-                    {user.status || 'Start a conversation'}
+                    {user.status || 'Tap to chat'}
                   </span>
                 )}
 
@@ -183,7 +218,7 @@ export const ChatList = ({ searchQuery, filterTab }) => {
                     <span key={l.id} className="w-2 h-2 rounded-full" style={{ backgroundColor: l.color }} title={l.name} />
                   ))}
                   {unreadCount > 0 && (
-                    <span className="min-w-5 h-5 px-1.5 bg-[#00a884] text-black font-extrabold text-[11px] rounded-full flex items-center justify-center shadow-md">
+                    <span className="min-w-5 h-5 px-1.5 bg-[#00a884] text-black font-black text-[11px] rounded-full flex items-center justify-center shadow-md animate-bounce">
                       {unreadCount}
                     </span>
                   )}
